@@ -78,15 +78,51 @@ class IDE(QMainWindow):
 
     
     # ==========================================
-    # MÉTODOS DE GESTIÓN DE ARCHIVOS (NUEVOS)
+    # MÉTODOS DE GESTIÓN DE ARCHIVOS
     # ==========================================
+    
+    def verificar_guardado(self):
+        """
+        Verifica si hay cambios sin guardar. 
+        Retorna True si es seguro continuar, False si el usuario cancela la acción.
+        """
+        # Si el documento no ha sido modificado, es seguro continuar
+        if not self.editor.document().isModified():
+            return True
+
+        # Si hay cambios, preguntamos al usuario
+        respuesta = QMessageBox.warning(
+            self,
+            "Cambios sin guardar",
+            "El documento actual tiene cambios sin guardar.\n¿Desea guardar los cambios?",
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel
+        )
+
+        if respuesta == QMessageBox.StandardButton.Save:
+            # Si elige guardar, intentamos guardar. Si falla o cancela el guardado, no continuamos.
+            return self.guardar_archivo()
+        elif respuesta == QMessageBox.StandardButton.Cancel:
+            # Si cancela, detenemos el proceso de Nuevo/Abrir
+            return False
+        
+        # Si elige "Discard" (No guardar), es seguro continuar
+        return True
+
     def nuevo_archivo(self):
+        # Primero verificamos si hay cambios
+        if not self.verificar_guardado():
+            return
+
         self.editor.clear()
         self.current_file = None
+        self.editor.document().setModified(False) # Reiniciamos el estado de modificación
         self.setWindowTitle("IDE Python - Compilador (Nuevo Archivo)")
 
     def abrir_archivo(self):
-        # Abre el diálogo nativo para buscar archivos
+        # Primero verificamos si hay cambios en el archivo actual
+        if not self.verificar_guardado():
+            return
+
         archivo_ruta, _ = QFileDialog.getOpenFileName(
             self, 
             "Abrir Archivo", 
@@ -100,6 +136,7 @@ class IDE(QMainWindow):
                     contenido = archivo.read()
                     self.editor.setPlainText(contenido)
                     self.current_file = archivo_ruta
+                    self.editor.document().setModified(False) # El archivo recién abierto no tiene cambios
                     self.setWindowTitle(f"IDE Python - Compilador ({archivo_ruta})")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo leer el archivo:\n{str(e)}")
@@ -110,12 +147,15 @@ class IDE(QMainWindow):
             try:
                 with open(self.current_file, 'w', encoding='utf-8') as archivo:
                     archivo.write(self.editor.toPlainText())
+                    self.editor.document().setModified(False) # Marcamos como guardado
                     QMessageBox.information(self, "Éxito", "Archivo guardado correctamente.")
+                    return True # Guardado exitoso
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo guardar el archivo:\n{str(e)}")
+                return False # Falló el guardado
         else:
             # Si no hay archivo previo, llama a "Guardar Como"
-            self.guardar_como()
+            return self.guardar_como()
 
     def guardar_como(self):
         archivo_ruta, _ = QFileDialog.getSaveFileName(
@@ -130,7 +170,12 @@ class IDE(QMainWindow):
                 with open(archivo_ruta, 'w', encoding='utf-8') as archivo:
                     archivo.write(self.editor.toPlainText())
                     self.current_file = archivo_ruta
+                    self.editor.document().setModified(False) # Marcamos como guardado
                     self.setWindowTitle(f"IDE Python - Compilador ({archivo_ruta})")
                     QMessageBox.information(self, "Éxito", "Archivo guardado correctamente.")
+                    return True # Guardado exitoso
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo guardar el archivo:\n{str(e)}")
+                return False
+        
+        return False # El usuario canceló la ventana de diálogo
