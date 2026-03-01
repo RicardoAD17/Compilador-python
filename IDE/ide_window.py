@@ -179,3 +179,19 @@ class IDE(QMainWindow):
                 return False
         
         return False # El usuario canceló la ventana de diálogo
+
+    
+    # ==========================================
+    # EVENTOS DE LA VENTANA
+    # ==========================================
+    def closeEvent(self, event):
+        """
+        Interviene cuando se intenta cerrar la ventana (por la 'X' o por el menú).
+        """
+        # Usamos nuestra función existente para preguntar si quiere guardar
+        if self.verificar_guardado():
+            # Si el usuario guardó, descartó o no había cambios, cerramos
+            event.accept() 
+        else:
+            # Si el usuario le dio a "Cancelar" en el cuadro de diálogo, ignoramos el cierre
+            event.ignore()
