@@ -23,7 +23,14 @@ def crear_menu(window):
     menu_archivo.addAction(accion_guardar_como)
     menu_archivo.addSeparator()
     menu_archivo.addAction(accion_salir)
+
+    # --- CONEXIONES DEL MENÚ ARCHIVO ---
+    accion_nuevo.triggered.connect(window.nuevo_archivo)
+    accion_abrir.triggered.connect(window.abrir_archivo)
+    accion_guardar.triggered.connect(window.guardar_archivo)
+    accion_guardar_como.triggered.connect(window.guardar_como)
     
+    accion_cerrar.triggered.connect(window.nuevo_archivo)
     accion_salir.triggered.connect(window.close)
 
     # --- Menú Compilar ---
