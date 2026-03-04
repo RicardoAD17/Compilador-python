@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QPlainTextEdit, QWidget
-from PyQt6.QtGui import QPainter, QFont, QPalette
+from PyQt6.QtGui import QPainter, QFont, QPalette, QColor
 from PyQt6.QtCore import Qt, QRect
 
 class LineNumberArea(QWidget):
@@ -68,11 +68,11 @@ class CodeEditor(QPlainTextEdit):
         painter = QPainter(self.line_number_area)
         
         # 3. Colores dinámicos basados en el tema del sistema (Dark/Light mode)
-        bg_color = self.palette().color(QPalette.ColorRole.Button) # Un tono sutil para el fondo
+        bg_color = QColor("#2b2b2b") # Gris oscuro tipo VS Code
         painter.fillRect(event.rect(), bg_color)
 
         # Color del texto de los números
-        text_color = self.palette().color(QPalette.ColorRole.Text)
+        text_color = QColor("#858585") # Gris claro para los números
         
         block = self.firstVisibleBlock()
         block_number = block.blockNumber()
