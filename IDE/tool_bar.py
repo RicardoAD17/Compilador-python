@@ -34,7 +34,7 @@ def crear_toolbar(window):
     accion_abrir.triggered.connect(window.abrir_archivo)
     accion_guardar.triggered.connect(window.guardar_archivo)
     accion_guardar_como.triggered.connect(window.guardar_como)
-    accion_cerrar.triggered.connect(window.nuevo_archivo) # "Cerrar" limpia el editor
+    accion_cerrar.triggered.connect(window.cerrar_archivo) # "Cerrar" limpia el editor
 
     # Añadir un espacio o salto para que la de compilación quede abajo o separada
     window.insertToolBarBreak(file_toolbar) 

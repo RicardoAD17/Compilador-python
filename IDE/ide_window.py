@@ -1,3 +1,4 @@
+import os
 from PyQt6.QtWidgets import QMainWindow, QSplitter, QTabWidget, QTextEdit, QFileDialog, QMessageBox
 from PyQt6.QtCore import Qt
 from editor import CodeEditor
@@ -9,18 +10,17 @@ class IDE(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("IDE Python - Compilador")
-        self.resize(1000, 700) # Un tamaño base ligeramente más grande
+        self.resize(1000, 700)
 
-        # --- Variable para rastrear el archivo actual ---
-        self.current_file = None
+        self.contador_sin_nombre = 1 # Para nombrar "Sin Nombre 1", "Sin Nombre 2"...
 
-        # 1. Instanciar el Editor
-        self.editor = CodeEditor()
-        self.editor.cursorPositionChanged.connect(
-            lambda: actualizar_posicion(self.editor, self.statusBar())
-        )
+        # 1. Instanciar el Contenedor de Pestañas del Editor
+        self.tabs_editor = QTabWidget()
+        self.tabs_editor.setTabsClosable(True) # Activar la 'X' en cada pestaña
+        self.tabs_editor.tabCloseRequested.connect(self.cerrar_pestana) # Conectar la 'X'
+        self.tabs_editor.currentChanged.connect(self.update_status) # Actualizar línea/columna al cambiar de pestaña
 
-        # 2. Panel Superior Derecho: Fases de Análisis y Tabla de Símbolos
+        # 2. Panel Superior Derecho: Fases de Análisis
         self.tabs_derechos = QTabWidget()
         self.tabs_derechos.addTab(QTextEdit(), "Análisis Léxico")
         self.tabs_derechos.addTab(QTextEdit(), "Análisis Sintáctico")
@@ -35,34 +35,49 @@ class IDE(QMainWindow):
         self.tabs_inferiores.addTab(QTextEdit(), "Errores Sintácticos")
         self.tabs_inferiores.addTab(QTextEdit(), "Errores Semánticos")
 
-        # 4. Configurar las divisiones (QSplitter)
-        # Primero dividimos la parte superior: Editor (Izquierda) vs Análisis (Derecha)
+        # 4. Configurar las divisiones
         top_splitter = QSplitter(Qt.Orientation.Horizontal)
-        top_splitter.addWidget(self.editor)
+        top_splitter.addWidget(self.tabs_editor) # Ahora agregamos las pestañas, no un solo editor
         top_splitter.addWidget(self.tabs_derechos)
-        top_splitter.setSizes([600, 400]) # Damos más espacio inicial al editor
+        top_splitter.setSizes([600, 400]) 
 
-        # Luego dividimos la ventana principal: Parte Superior vs Panel Inferior
-        # Al poner el top_splitter arriba y los tabs inferiores abajo, 
-        # el panel inferior ocupará todo el ancho de la ventana.
         main_splitter = QSplitter(Qt.Orientation.Vertical)
         main_splitter.addWidget(top_splitter)
         main_splitter.addWidget(self.tabs_inferiores)
-        main_splitter.setSizes([500, 200]) # La consola inferior es más pequeña
+        main_splitter.setSizes([500, 200]) 
 
-        # 5. Establecer el layout principal
         self.setCentralWidget(main_splitter)
 
-        # Barras
+        # Barras y Estado
         crear_toolbar(self)
         crear_menu(self)
-
-        # Estado
         self.statusBar()
 
+        # Iniciar con un archivo en blanco por defecto
+        self.nuevo_archivo()
+
+    # ==========================================
+    # UTILIDADES DE PESTAÑAS
+    # ==========================================
+    def get_current_editor(self):
+        """Retorna el CodeEditor de la pestaña activa."""
+        return self.tabs_editor.currentWidget()
+
+    def update_status(self):
+        """Actualiza la barra de estado según la pestaña seleccionada."""
+        editor = self.get_current_editor()
+        if editor:
+            actualizar_posicion(editor, self.statusBar())
+        else:
+            self.statusBar().clearMessage()
+
+    # ==========================================
+    # MÉTODOS DE COMPILACIÓN
+    # ==========================================
     def run_lexico(self):
-        print("Ejecutando Análisis Léxico...")
-        # Aquí más adelante harás la llamada al sistema (system call)
+        editor = self.get_current_editor()
+        if not editor: return
+        print("Ejecutando Léxico en el archivo actual...")
 
     def run_sintactico(self):
         print("Ejecutando Análisis Sintáctico...")
@@ -76,122 +91,148 @@ class IDE(QMainWindow):
     def run_ejecucion(self):
         print("Ejecutando el programa...")
 
-    
     # ==========================================
     # MÉTODOS DE GESTIÓN DE ARCHIVOS
     # ==========================================
-    
-    def verificar_guardado(self):
-        """
-        Verifica si hay cambios sin guardar. 
-        Retorna True si es seguro continuar, False si el usuario cancela la acción.
-        """
-        # Si el documento no ha sido modificado, es seguro continuar
-        if not self.editor.document().isModified():
-            return True
-
-        # Si hay cambios, preguntamos al usuario
-        respuesta = QMessageBox.warning(
-            self,
-            "Cambios sin guardar",
-            "El documento actual tiene cambios sin guardar.\n¿Desea guardar los cambios?",
-            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel
-        )
-
-        if respuesta == QMessageBox.StandardButton.Save:
-            # Si elige guardar, intentamos guardar. Si falla o cancela el guardado, no continuamos.
-            return self.guardar_archivo()
-        elif respuesta == QMessageBox.StandardButton.Cancel:
-            # Si cancela, detenemos el proceso de Nuevo/Abrir
-            return False
-        
-        # Si elige "Discard" (No guardar), es seguro continuar
-        return True
-
     def nuevo_archivo(self):
-        # Primero verificamos si hay cambios
-        if not self.verificar_guardado():
-            return
+        nuevo_editor = CodeEditor()
+        nuevo_editor.file_path = None # Variable dinámica para rastrear su ruta
+        nuevo_editor.document().setModified(False)
+        nuevo_editor.cursorPositionChanged.connect(self.update_status)
 
-        self.editor.clear()
-        self.current_file = None
-        self.editor.document().setModified(False) # Reiniciamos el estado de modificación
-        self.setWindowTitle("IDE Python - Compilador (Nuevo Archivo)")
+        titulo = f"Sin Nombre {self.contador_sin_nombre}"
+        self.contador_sin_nombre += 1
+
+        index = self.tabs_editor.addTab(nuevo_editor, titulo)
+        self.tabs_editor.setCurrentIndex(index) # Enfocar la nueva pestaña
 
     def abrir_archivo(self):
-        # Primero verificamos si hay cambios en el archivo actual
-        if not self.verificar_guardado():
-            return
-
-        archivo_ruta, _ = QFileDialog.getOpenFileName(
-            self, 
-            "Abrir Archivo", 
-            "", 
-            "Archivos de Texto (*.txt);;Todos los Archivos (*)"
-        )
+        archivo_ruta, _ = QFileDialog.getOpenFileName(self, "Abrir Archivo", "", "Archivos de Texto (*.txt);;Todos los Archivos (*)")
         
         if archivo_ruta:
+            # Evitar abrir el mismo archivo dos veces
+            for i in range(self.tabs_editor.count()):
+                editor_existente = self.tabs_editor.widget(i)
+                if getattr(editor_existente, 'file_path', None) == archivo_ruta:
+                    self.tabs_editor.setCurrentIndex(i)
+                    return
+
             try:
                 with open(archivo_ruta, 'r', encoding='utf-8') as archivo:
                     contenido = archivo.read()
-                    self.editor.setPlainText(contenido)
-                    self.current_file = archivo_ruta
-                    self.editor.document().setModified(False) # El archivo recién abierto no tiene cambios
-                    self.setWindowTitle(f"IDE Python - Compilador ({archivo_ruta})")
+                
+                nuevo_editor = CodeEditor()
+                nuevo_editor.file_path = archivo_ruta
+                nuevo_editor.setPlainText(contenido)
+                nuevo_editor.document().setModified(False)
+                nuevo_editor.cursorPositionChanged.connect(self.update_status)
+
+                titulo = os.path.basename(archivo_ruta) # Solo el nombre del archivo, no toda la ruta
+                index = self.tabs_editor.addTab(nuevo_editor, titulo)
+                self.tabs_editor.setCurrentIndex(index)
+
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"No se pudo leer el archivo:\n{str(e)}")
 
     def guardar_archivo(self):
-        # Si ya hay un archivo abierto, lo sobreescribe
-        if self.current_file:
+        editor = self.get_current_editor()
+        if not editor: return False
+
+        if getattr(editor, 'file_path', None):
             try:
-                with open(self.current_file, 'w', encoding='utf-8') as archivo:
-                    archivo.write(self.editor.toPlainText())
-                    self.editor.document().setModified(False) # Marcamos como guardado
-                    QMessageBox.information(self, "Éxito", "Archivo guardado correctamente.")
-                    return True # Guardado exitoso
+                with open(editor.file_path, 'w', encoding='utf-8') as archivo:
+                    archivo.write(editor.toPlainText())
+                editor.document().setModified(False)
+                
+                # Actualizar el nombre de la pestaña por si tenía algún indicador
+                index = self.tabs_editor.indexOf(editor)
+                self.tabs_editor.setTabText(index, os.path.basename(editor.file_path))
+                
+                QMessageBox.information(self, "Éxito", "Archivo guardado.")
+                return True
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"No se pudo guardar el archivo:\n{str(e)}")
-                return False # Falló el guardado
+                QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{str(e)}")
+                return False
         else:
-            # Si no hay archivo previo, llama a "Guardar Como"
             return self.guardar_como()
 
     def guardar_como(self):
-        archivo_ruta, _ = QFileDialog.getSaveFileName(
-            self, 
-            "Guardar Como", 
-            "", 
-            "Archivos de Texto (*.txt);;Todos los Archivos (*)"
-        )
+        editor = self.get_current_editor()
+        if not editor: return False
+
+        archivo_ruta, _ = QFileDialog.getSaveFileName(self, "Guardar Como", "", "Archivos de Texto (*.txt);;Todos los Archivos (*)")
         
         if archivo_ruta:
             try:
                 with open(archivo_ruta, 'w', encoding='utf-8') as archivo:
-                    archivo.write(self.editor.toPlainText())
-                    self.current_file = archivo_ruta
-                    self.editor.document().setModified(False) # Marcamos como guardado
-                    self.setWindowTitle(f"IDE Python - Compilador ({archivo_ruta})")
-                    QMessageBox.information(self, "Éxito", "Archivo guardado correctamente.")
-                    return True # Guardado exitoso
+                    archivo.write(editor.toPlainText())
+                editor.file_path = archivo_ruta
+                editor.document().setModified(False)
+                
+                index = self.tabs_editor.indexOf(editor)
+                self.tabs_editor.setTabText(index, os.path.basename(archivo_ruta))
+                
+                QMessageBox.information(self, "Éxito", "Archivo guardado.")
+                return True
             except Exception as e:
-                QMessageBox.critical(self, "Error", f"No se pudo guardar el archivo:\n{str(e)}")
+                QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{str(e)}")
                 return False
-        
-        return False # El usuario canceló la ventana de diálogo
+        return False
 
-    
+    def cerrar_archivo(self):
+        """Llamado desde el menú/toolbar para cerrar la pestaña actual."""
+        index = self.tabs_editor.currentIndex()
+        if index != -1:
+            self.cerrar_pestana(index)
+
+    def cerrar_pestana(self, index):
+        """Cierra una pestaña específica, verificando si hay cambios."""
+        editor = self.tabs_editor.widget(index)
+        
+        if editor.document().isModified():
+            self.tabs_editor.setCurrentIndex(index) # Nos movemos a la pestaña para que el usuario vea qué va a cerrar
+            titulo = self.tabs_editor.tabText(index)
+            respuesta = QMessageBox.warning(
+                self, "Cambios sin guardar",
+                f"El archivo '{titulo}' tiene cambios.\n¿Desea guardarlos?",
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel
+            )
+            
+            if respuesta == QMessageBox.StandardButton.Save:
+                if not self.guardar_archivo():
+                    return # Si cancela el guardado, no cerramos
+            elif respuesta == QMessageBox.StandardButton.Cancel:
+                return # Detiene el cierre
+
+        self.tabs_editor.removeTab(index)
+
     # ==========================================
     # EVENTOS DE LA VENTANA
     # ==========================================
     def closeEvent(self, event):
-        """
-        Interviene cuando se intenta cerrar la ventana (por la 'X' o por el menú).
-        """
-        # Usamos nuestra función existente para preguntar si quiere guardar
-        if self.verificar_guardado():
-            # Si el usuario guardó, descartó o no había cambios, cerramos
-            event.accept() 
-        else:
-            # Si el usuario le dio a "Cancelar" en el cuadro de diálogo, ignoramos el cierre
-            event.ignore()
+        """Al cerrar el IDE, intentamos cerrar todas las pestañas una por una."""
+        while self.tabs_editor.count() > 0:
+            index = self.tabs_editor.currentIndex()
+            editor = self.tabs_editor.widget(index)
+            
+            if editor.document().isModified():
+                self.tabs_editor.setCurrentIndex(index)
+                titulo = self.tabs_editor.tabText(index)
+                respuesta = QMessageBox.warning(
+                    self, "Cambios sin guardar",
+                    f"El archivo '{titulo}' tiene cambios.\n¿Desea guardarlos antes de salir?",
+                    QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel
+                )
+                
+                if respuesta == QMessageBox.StandardButton.Save:
+                    if not self.guardar_archivo():
+                        event.ignore()
+                        return
+                elif respuesta == QMessageBox.StandardButton.Cancel:
+                    event.ignore()
+                    return
+            
+            # Si se guardó o se eligió "Descartar", removemos la pestaña
+            self.tabs_editor.removeTab(index)
+            
+        event.accept()

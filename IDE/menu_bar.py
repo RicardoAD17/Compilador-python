@@ -30,7 +30,7 @@ def crear_menu(window):
     accion_guardar.triggered.connect(window.guardar_archivo)
     accion_guardar_como.triggered.connect(window.guardar_como)
     
-    accion_cerrar.triggered.connect(window.nuevo_archivo)
+    accion_cerrar.triggered.connect(window.cerrar_archivo)
     accion_salir.triggered.connect(window.close)
 
     # --- Menú Compilar ---
