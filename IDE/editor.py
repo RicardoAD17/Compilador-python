@@ -18,6 +18,7 @@ class LineNumberArea(QWidget):
 class CodeEditor(QPlainTextEdit):
     def __init__(self):
         super().__init__()
+        self.is_dark_theme = True # Por defecto iniciamos en oscuro
         
         # 1. Configurar fuente tipo código (Monoespaciada)
         font = QFont("Consolas", 11)
@@ -35,6 +36,10 @@ class CodeEditor(QPlainTextEdit):
         self.updateRequest.connect(self.update_line_number_area)
 
         self.update_line_number_area_width(0)
+
+    def set_theme(self, is_dark):
+        self.is_dark_theme = is_dark
+        self.line_number_area.update() # Fuerza a redibujar la barra de números
 
     def line_number_area_width(self):
         digits = 1
@@ -66,14 +71,17 @@ class CodeEditor(QPlainTextEdit):
 
     def lineNumberAreaPaintEvent(self, event):
         painter = QPainter(self.line_number_area)
-        
-        # 3. Colores dinámicos basados en el tema del sistema (Dark/Light mode)
-        bg_color = QColor("#2b2b2b") # Gris oscuro tipo VS Code
+
+        # --- Lógica de colores según el tema ---
+        if self.is_dark_theme:
+            bg_color = QColor("#2b2b2b") # Gris oscuro
+            text_color = QColor("#858585") # Letras gris claro
+        else:
+            bg_color = QColor("#f0f0f0") # Gris muy claro
+            text_color = QColor("#555555") # Letras gris oscuro
+
         painter.fillRect(event.rect(), bg_color)
 
-        # Color del texto de los números
-        text_color = QColor("#858585") # Gris claro para los números
-        
         block = self.firstVisibleBlock()
         block_number = block.blockNumber()
         top = round(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
@@ -82,12 +90,9 @@ class CodeEditor(QPlainTextEdit):
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 number = str(block_number + 1)
-                
-                # Le damos un poco de transparencia al texto para que no resalte más que el código
+
                 text_color.setAlpha(150) 
                 painter.setPen(text_color)
-                
-                # Dibujamos el número alineado a la derecha y centrado verticalmente
                 painter.drawText(0, top, self.line_number_area.width() - 5, self.fontMetrics().height(),
                                  Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, number)
 

@@ -13,6 +13,7 @@ class IDE(QMainWindow):
         self.resize(1000, 700)
 
         self.contador_sin_nombre = 1 # Para nombrar "Sin Nombre 1", "Sin Nombre 2"...
+        self.is_dark_theme = True # Rastrear el tema actual de la ventana
 
         # 1. Instanciar el Contenedor de Pestañas del Editor
         self.tabs_editor = QTabWidget()
@@ -96,6 +97,7 @@ class IDE(QMainWindow):
     # ==========================================
     def nuevo_archivo(self):
         nuevo_editor = CodeEditor()
+        nuevo_editor.set_theme(self.is_dark_theme)
         nuevo_editor.file_path = None # Variable dinámica para rastrear su ruta
         nuevo_editor.document().setModified(False)
         nuevo_editor.cursorPositionChanged.connect(self.update_status)
@@ -122,6 +124,7 @@ class IDE(QMainWindow):
                     contenido = archivo.read()
                 
                 nuevo_editor = CodeEditor()
+                nuevo_editor.set_theme(self.is_dark_theme)
                 nuevo_editor.file_path = archivo_ruta
                 nuevo_editor.setPlainText(contenido)
                 nuevo_editor.document().setModified(False)
@@ -236,3 +239,29 @@ class IDE(QMainWindow):
             self.tabs_editor.removeTab(index)
             
         event.accept()
+
+    def toggle_tema(self):
+        """Cambia la hoja de estilos de toda la aplicación entre claro y oscuro."""
+        self.is_dark_theme = not self.is_dark_theme
+
+        if self.is_dark_theme:
+            # QSS para Tema Oscuro
+            self.setStyleSheet("""
+                QMainWindow, QWidget { background-color: #2b2b2b; color: #ffffff; }
+                QTextEdit, QPlainTextEdit { background-color: #1e1e1e; color: #ffffff; border: 1px solid #444; }
+                QTabBar::tab { background: #333333; color: white; padding: 6px; }
+                QTabBar::tab:selected { background: #1e1e1e; font-weight: bold; border-top: 2px solid #007acc; }
+            """)
+        else:
+            # QSS para Tema Claro
+            self.setStyleSheet("""
+                QMainWindow, QWidget { background-color: #f0f0f0; color: #000000; }
+                QTextEdit, QPlainTextEdit { background-color: #ffffff; color: #000000; border: 1px solid #ccc; }
+                QTabBar::tab { background: #e0e0e0; color: black; padding: 6px; }
+                QTabBar::tab:selected { background: #ffffff; font-weight: bold; border-top: 2px solid #007acc; }
+            """)
+
+        # Actualizar la barra de números en todas las pestañas abiertas
+        for i in range(self.tabs_editor.count()):
+            editor = self.tabs_editor.widget(i)
+            editor.set_theme(self.is_dark_theme)

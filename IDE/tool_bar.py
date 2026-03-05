@@ -15,6 +15,10 @@ def crear_toolbar(window):
     icon_guardar_como = style.standardIcon(style.StandardPixmap.SP_DriveHDIcon)
     icon_cerrar = style.standardIcon(style.StandardPixmap.SP_BrowserStop)
 
+    # --- NUEVO BOTÓN DE TEMA ---
+    icon_tema = style.standardIcon(style.StandardPixmap.SP_DesktopIcon) # Icono de un monitor
+    accion_tema = QAction(icon_tema, "Cambiar Tema", window)
+
     # Crear acciones con iconos
     accion_nuevo = QAction(icon_nuevo, "Nuevo", window)
     accion_abrir = QAction(icon_abrir, "Abrir", window)
@@ -29,12 +33,17 @@ def crear_toolbar(window):
     file_toolbar.addAction(accion_guardar_como)
     file_toolbar.addAction(accion_cerrar)
 
+    file_toolbar.addSeparator() # Una línea divisoria
+    file_toolbar.addAction(accion_tema) # Añadimos el botón a la barra
+
     # Conectar a los mismos métodos funcionales de ide_window.py
     accion_nuevo.triggered.connect(window.nuevo_archivo)
     accion_abrir.triggered.connect(window.abrir_archivo)
     accion_guardar.triggered.connect(window.guardar_archivo)
     accion_guardar_como.triggered.connect(window.guardar_como)
     accion_cerrar.triggered.connect(window.cerrar_archivo) # "Cerrar" limpia el editor
+
+    accion_tema.triggered.connect(window.toggle_tema) # Conectar al método nuevo
 
     # Añadir un espacio o salto para que la de compilación quede abajo o separada
     window.insertToolBarBreak(file_toolbar) 
