@@ -5,7 +5,8 @@ from editor import CodeEditor
 from status_bar import actualizar_posicion
 from tool_bar import crear_toolbar
 from menu_bar import crear_menu
-
+from analizador_lexico.analizador import analizar
+from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
 class IDE(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -23,7 +24,23 @@ class IDE(QMainWindow):
 
         # 2. Panel Superior Derecho: Fases de Análisis
         self.tabs_derechos = QTabWidget()
-        self.tabs_derechos.addTab(QTextEdit(), "Análisis Léxico")
+        # --- NUEVA TABLA PARA LÉXICO ---
+        self.tabla_lexico = QTableWidget()
+        self.tabla_lexico.setColumnCount(4) # 4 columnas
+        self.tabla_lexico.setHorizontalHeaderLabels(["Tipo de Token", "Lexema", "Línea", "Columna"])
+        
+        # Hacer que las columnas se expandan para llenar el espacio
+        header = self.tabla_lexico.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch) # Tipo
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch) # Lexema
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents) # Linea
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents) # Columna
+        
+        # Quitar los números de fila de la izquierda (opcional, se ve más limpio)
+        self.tabla_lexico.verticalHeader().setVisible(False)
+        
+        # Agregar la tabla como la primera pestaña
+        self.tabs_derechos.addTab(self.tabla_lexico, "Análisis Léxico")
         self.tabs_derechos.addTab(QTextEdit(), "Análisis Sintáctico")
         self.tabs_derechos.addTab(QTextEdit(), "Análisis Semántico")
         self.tabs_derechos.addTab(QTextEdit(), "Código Intermedio")
@@ -77,9 +94,55 @@ class IDE(QMainWindow):
     # ==========================================
     def run_lexico(self):
         editor = self.get_current_editor()
-        if not editor: return
-        print("Ejecutando Léxico en el archivo actual...")
+        if not editor: 
+            return 
 
+        codigo = editor.toPlainText()
+        consola_errores = self.tabs_inferiores.widget(1) 
+
+        # 1. Limpiar la tabla y la consola de errores
+        self.tabla_lexico.setRowCount(0) # Borra todas las filas anteriores
+        consola_errores.clear()
+
+        # 2. Llamar al analizador
+        tokens, errores = analizar(codigo)
+
+        # 3. LLENAR LA TABLA CON LOS TOKENS
+        for row_index, t in enumerate(tokens):
+            # Insertar una nueva fila en la posición row_index
+            self.tabla_lexico.insertRow(row_index)
+            
+            # Crear los items para cada celda (PyQt exige que sean QTableWidgetItem)
+            item_tipo = QTableWidgetItem(t['tipo'])
+            item_lexema = QTableWidgetItem(repr(t['lexema'])) # repr() ayuda a que los saltos de línea se vean bien
+            item_linea = QTableWidgetItem(str(t['linea']))
+            item_columna = QTableWidgetItem(str(t['columna']))
+            
+            # (Opcional) Alinear los números al centro
+            item_linea.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_columna.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            # Colocar los items en su celda correspondiente (fila, columna, item)
+            self.tabla_lexico.setItem(row_index, 0, item_tipo)
+            self.tabla_lexico.setItem(row_index, 1, item_lexema)
+            self.tabla_lexico.setItem(row_index, 2, item_linea)
+            self.tabla_lexico.setItem(row_index, 3, item_columna)
+
+        # 4. Imprimir Errores (Esto se queda igual que antes)
+        if errores:
+            consola_errores.setTextColor(Qt.GlobalColor.red)
+            consola_errores.append(f"Se encontraron {len(errores)} errores léxicos:\n")
+            for e in errores:
+                consola_errores.append(e['mensaje'])
+            consola_errores.setTextColor(Qt.GlobalColor.white if self.is_dark_theme else Qt.GlobalColor.black)
+        else:
+            consola_errores.setTextColor(Qt.GlobalColor.green)
+            consola_errores.append("Análisis Léxico completado sin errores. ✅")
+            consola_errores.setTextColor(Qt.GlobalColor.white if self.is_dark_theme else Qt.GlobalColor.black)
+
+        # Cambiar el foco
+        self.tabs_derechos.setCurrentIndex(0)
+        self.tabs_inferiores.setCurrentIndex(1 if errores else 0)
     def run_sintactico(self):
         print("Ejecutando Análisis Sintáctico...")
 
