@@ -12,7 +12,7 @@ TOKEN_ESPECIFICATION = [
     
     ('FLOTANTE',         r'\d+\.\d+'),
     ('ENTERO',           r'\d+'),
-    ('PALABRAS_RESERVADAS', r'\b(if|else|while|do|end|switch|case|int|float|main|cin|cout|then|until)\b'),
+    ('PALABRAS_RESERVADAS', r'\b(if|else|while|do|end|switch|case|int|float|bool|main|cin|cout|then|until|true|false)\b'),
     ('IDENTIFICADORES',  r'[a-zA-Z_][a-zA-Z0-9_]*'),
     
     # 2. SOLUCIÓN A SÍMBOLOS SEPARADOS (+ \n +):

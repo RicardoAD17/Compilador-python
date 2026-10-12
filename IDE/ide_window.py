@@ -13,6 +13,7 @@ from tool_bar import crear_toolbar
 from menu_bar import crear_menu
 from analizador_lexico.analizador import analizar
 from analizador_sintactico import AnalizadorSintactico, NodoAST
+from analizador_semantico import AnalizadorSemantico
 
 
 class IDE(QMainWindow):
@@ -27,6 +28,8 @@ class IDE(QMainWindow):
         # Guardar últimos resultados para exportar
         self._ultimo_ast       = None
         self._ultimos_errores_sint = []
+        self._ultimo_ast_semantico = None
+        self._ultimos_errores_sem = []
 
         # ── Pestañas del Editor ───────────────────────────────────────
         self.tabs_editor = QTabWidget()
@@ -66,9 +69,16 @@ class IDE(QMainWindow):
 
         self.tabs_derechos.addTab(self.tabla_lexico, "Análisis Léxico")
         self.tabs_derechos.addTab(panel_sint,        "Análisis Sintáctico")
-        self.tabs_derechos.addTab(QTextEdit(),       "Análisis Semántico")
+        self.arbol_semantico = QTreeWidget()
+        self.arbol_semantico.setHeaderLabel("AST con anotaciones semánticas")
+        self.arbol_semantico.setFont(QFont("Consolas", 10))
+        self.tabs_derechos.addTab(self.arbol_semantico, "Análisis Semántico")
         self.tabs_derechos.addTab(QTextEdit(),       "Código Intermedio")
-        self.tabs_derechos.addTab(QTextEdit(),       "Tabla de Símbolos")
+        self.tabla_simbolos = QTableWidget()
+        self.tabla_simbolos.setColumnCount(5)
+        self.tabla_simbolos.setHorizontalHeaderLabels(["Identificador", "Tipo", "Líneas", "Desplazamiento", "Ámbito"])
+        self.tabla_simbolos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tabs_derechos.addTab(self.tabla_simbolos, "Tabla de Símbolos")
 
         # ── Panel inferior ────────────────────────────────────────────
         self.tabs_inferiores = QTabWidget()
@@ -90,7 +100,8 @@ class IDE(QMainWindow):
         layout_err_sint.addWidget(self.consola_errores_sint)
 
         self.tabs_inferiores.addTab(consola_sint_widget, "Errores Sintácticos")
-        self.tabs_inferiores.addTab(QTextEdit(),         "Errores Semánticos")
+        self.consola_errores_sem = QTextEdit()
+        self.tabs_inferiores.addTab(self.consola_errores_sem, "Errores Semánticos")
 
         # ── Layout principal ──────────────────────────────────────────
         top_splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -402,7 +413,78 @@ class IDE(QMainWindow):
     # FASES PENDIENTES
     # ================================================================
     def run_semantico(self):
-        print("Ejecutando Análisis Semántico...")
+        editor = self.get_current_editor()
+        if not editor:
+            return
+
+        tokens, errores_lex = analizar(editor.toPlainText())
+        parser = AnalizadorSintactico(tokens)
+        ast, errores_sint = parser.parsear()
+        self._ultimo_ast = ast
+        self._ultimos_errores_sint = errores_sint
+        self._ultimo_ast_semantico = None
+        self._ultimos_errores_sem = []
+        self.arbol_sintactico.clear()
+        self.arbol_semantico.clear()
+        self.tabla_simbolos.setRowCount(0)
+
+        if ast:
+            self.arbol_sintactico.addTopLevelItem(self._construir_item_arbol(ast))
+            self.arbol_sintactico.expandAll()
+        if errores_lex or errores_sint or ast is None:
+            self._mostrar_errores_sem([{
+                "mensaje": "Análisis semántico no ejecutado: corrige primero los errores mostrados en las pestañas Léxico y Sintáctico.",
+                "linea": 0, "columna": 0,
+            }])
+            self.tabs_derechos.setCurrentIndex(1)
+            self.tabs_inferiores.setCurrentIndex(3 if errores_sint else 1)
+            return
+
+        analizador = AnalizadorSemantico(ast)
+        anotado, simbolos, errores = analizador.analizar()
+        self._ultimo_ast_semantico = anotado
+        self._ultimos_errores_sem = errores
+        self.arbol_semantico.addTopLevelItem(self._construir_item_anotado(anotado))
+        self.arbol_semantico.expandAll()
+        for fila, simbolo in enumerate(simbolos):
+            self.tabla_simbolos.insertRow(fila)
+            valores = (simbolo["nombre"], simbolo["tipo"], ", ".join(str(x) for x in simbolo["lineas"]),
+                       str(simbolo["desplazamiento"]), str(simbolo["ambito"]))
+            for columna, valor in enumerate(valores):
+                self.tabla_simbolos.setItem(fila, columna, QTableWidgetItem(valor))
+        self._mostrar_errores_sem(errores)
+        self.tabs_derechos.setCurrentIndex(2)
+        self.tabs_inferiores.setCurrentIndex(3)
+
+    def _mostrar_errores_sem(self, errores):
+        self.consola_errores_sem.clear()
+        if errores:
+            self.consola_errores_sem.setTextColor(Qt.GlobalColor.red)
+            self.consola_errores_sem.append(f"Se encontraron {len(errores)} errores / incidencias:\n")
+            for error in errores:
+                self.consola_errores_sem.append(error["mensaje"])
+        else:
+            self.consola_errores_sem.setTextColor(Qt.GlobalColor.green)
+            self.consola_errores_sem.append("Análisis Semántico completado sin errores. ✅")
+        self.consola_errores_sem.setTextColor(Qt.GlobalColor.white if self.is_dark_theme else Qt.GlobalColor.black)
+
+    def _construir_item_anotado(self, nodo):
+        etiqueta = nodo.tipo
+        if nodo.valor is not None:
+            etiqueta += f" → {nodo.valor}"
+        if nodo.linea is not None:
+            etiqueta += f" [L{nodo.linea}]"
+        if getattr(nodo, "tipo_dato", None):
+            etiqueta += f" : {nodo.tipo_dato}"
+        if getattr(nodo, "conversion", None):
+            etiqueta += f" [conversión {nodo.conversion}]"
+        if getattr(nodo, "valor_constante", None) is not None:
+            etiqueta += f" [valor={nodo.valor_constante}]"
+        item = QTreeWidgetItem([etiqueta])
+        item.setForeground(0, QBrush(QColor(self._color_nodo(nodo.tipo))))
+        for hijo in nodo.hijos:
+            item.addChild(self._construir_item_anotado(hijo))
+        return item
 
     def run_intermedio(self):
         print("Generando Código Intermedio...")
