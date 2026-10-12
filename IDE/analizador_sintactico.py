@@ -426,8 +426,11 @@ class AnalizadorSintactico:
         cuerpo.agregar_hijo(self._parse_lista_hasta_while_cierre())
         nodo.agregar_hijo(cuerpo)
 
-        # Consumir el 'while' de cierre del do-while
-        self.consumir('PALABRAS_RESERVADAS', 'while')
+        # Consumir el 'while' o 'until' de cierre del do
+        if self.es('PALABRAS_RESERVADAS', 'until'):
+            self.avanzar()   # consumir 'until'
+        else:
+            self.consumir('PALABRAS_RESERVADAS', 'while')
 
         # Condición: con o sin paréntesis
         if self.es('SIMBOLOS', '('):
@@ -438,7 +441,7 @@ class AnalizadorSintactico:
             cond = self.parse_expresion()
         nodo.agregar_hijo(cond)
 
-        # Consumir SOLO el ';' de cierre del do-while, nada más
+        # Consumir SOLO el ';' de cierre, nada más
         if self.es('SIMBOLOS', ';'):
             self.avanzar()
 
@@ -462,20 +465,23 @@ class AnalizadorSintactico:
         nodo.linea = tok['linea']
 
         while not self.es('EOF') and not self.es('SIMBOLOS', '}') \
-              and not self.es('PALABRAS_RESERVADAS', 'end') \
-              and not self.es('PALABRAS_RESERVADAS', 'else'):
+              and not self.es('PALABRAS_RESERVADAS', 'else') \
+              and not self.es('PALABRAS_RESERVADAS', 'until'):
 
             # ¿Es un 'while'? Hay que decidir si es interno o el cierre del do.
             if self.es('PALABRAS_RESERVADAS', 'while'):
                 # Miramos qué viene después del 'while (cond)':
-                # Si el token posterior a la condición es '{' o una sentencia válida
-                # → es un while INTERNO con cuerpo → lo parseamos completo.
-                # Si viene ';' directamente → es el while de CIERRE del do → paramos.
+                # Si tiene cuerpo propio (termina en end o {}) → es un while INTERNO
+                # Si no tiene cuerpo (le sigue ';' o 'until' o EOF) → es el cierre del do
                 if self._while_tiene_cuerpo():
                     nodo.agregar_hijo(self.parse_iteracion())
                 else:
                     # Es el while de cierre del do → salimos sin consumirlo
                     break
+            # 'end' solo detiene el bucle si NO hay un while pendiente de cerrar
+            # (ese caso ya lo maneja parse_iteracion internamente)
+            elif self.es('PALABRAS_RESERVADAS', 'end'):
+                break
             else:
                 decl = self.parse_declaracion()
                 if decl:
@@ -485,65 +491,73 @@ class AnalizadorSintactico:
 
     def _while_tiene_cuerpo(self):
         """
-        Mira hacia adelante SIN consumir tokens para saber si este 'while'
-        tiene cuerpo propio (es un while interno) o es el cierre de un do-while.
+        Determina si el 'while' actual tiene cuerpo propio (while interno)
+        o es el cierre de un do-while.
 
-        Regla:
-          - Salta el 'while' y su condición (respetando paréntesis balanceados).
-          - Si después de la condición hay '{' o una sentencia válida → tiene cuerpo.
-          - Si después hay ';' o EOF → es el while de cierre del do.
+        Estrategia: busca hacia adelante si entre este 'while' y el siguiente
+        'end', 'until', '}' o EOF hay tokens en líneas POSTERIORES a la
+        condición. Si los hay → tiene cuerpo. Si no → es cierre del do.
 
-        Opera con índice directo sobre self.tokens para evitar bucles infinitos.
-        NO modifica self.pos en ningún momento.
+        NO modifica self.pos.
         """
-        n = len(self.tokens)
+        n    = len(self.tokens)
+        i    = self.pos + 1   # saltar el 'while'
 
-        def tok_en(i):
-            if i < n:
-                return self.tokens[i]
-            return {'tipo': 'EOF', 'lexema': '', 'linea': -1, 'columna': -1}
-
-        i = self.pos + 1  # saltar el token 'while'
-
-        # ── Saltar la condición ──────────────────────────────────────
+        # ── Determinar la línea donde termina la condición ───────────
+        # Avanzamos saltando la condición (con o sin paréntesis) para
+        # saber en qué línea queda el último token de la condición.
         if i < n and self.tokens[i]['lexema'] == '(':
-            # Saltar paréntesis balanceados usando índice directo
             profundidad = 0
             while i < n:
                 lex = self.tokens[i]['lexema']
-                if lex == '(':
-                    profundidad += 1
-                    i += 1
+                if lex == '(': profundidad += 1
                 elif lex == ')':
                     profundidad -= 1
                     i += 1
                     if profundidad == 0:
                         break
-                else:
-                    i += 1
+                    continue
+                i += 1
         else:
-            # Sin paréntesis: avanzar hasta token de parada
-            palabras_parada = {'int','float','bool','if','while','do',
-                               'cin','cout','end','else','}','{',';'}
+            # Sin paréntesis: la condición termina cuando hay un salto de
+            # línea seguido de algo que no sea parte de la expresión,
+            # o cuando encontramos un token de inicio de sentencia.
+            linea_while = self.tokens[self.pos]['linea']
             while i < n:
                 t = self.tokens[i]
-                if t['lexema'] in palabras_parada or t['tipo'] == 'EOF':
+                # Si el token ya está en una línea distinta Y es inicio
+                # de sentencia → la condición terminó en la línea anterior
+                if t['linea'] > linea_while:
+                    if (t['tipo'] == 'IDENTIFICADORES'
+                            or (t['tipo'] == 'PALABRAS_RESERVADAS'
+                                and t['lexema'] in ('int','float','bool',
+                                    'if','while','do','cin','cout',
+                                    'end','else','until'))
+                            or t['lexema'] == '}'):
+                        break
+                # Fin explícito de expresión
+                if t['lexema'] in (';', '{', '}') or t['tipo'] == 'EOF':
+                    break
+                if (t['tipo'] == 'PALABRAS_RESERVADAS'
+                        and t['lexema'] in ('end','else','until')):
                     break
                 i += 1
 
-        # ── Revisar qué hay después de la condición ──────────────────
-        tok_sig = tok_en(i)
-        lex     = tok_sig['lexema']
-        tipo    = tok_sig['tipo']
+        # ── Ahora i apunta al primer token DESPUÉS de la condición ───
+        if i >= n:
+            return False
 
+        tok_sig = self.tokens[i]
+
+        # Si es 'end', '{' o inicio de sentencia → tiene cuerpo
         tiene_cuerpo = (
-            lex == '{'                                              # while(c){ ... }
-            or tipo == 'IDENTIFICADORES'                           # while c  id = ...
-            or (tipo == 'PALABRAS_RESERVADAS'
-                and lex in ('int','float','bool','if','do','cin','cout'))
+            tok_sig['lexema'] == '{'
+            or tok_sig['lexema'] == 'end'
+            or tok_sig['tipo'] == 'IDENTIFICADORES'
+            or (tok_sig['tipo'] == 'PALABRAS_RESERVADAS'
+                and tok_sig['lexema'] in ('int','float','bool',
+                    'if','do','cin','cout'))
         )
-
-        # self.pos NO fue modificado
         return tiene_cuerpo
 
     # sent_in → cin >> id ;
