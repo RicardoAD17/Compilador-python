@@ -181,9 +181,17 @@ class AnalizadorSemantico:
             return None
         if len(tipos) == 2 and tipos[0] != tipos[1]:
             nodo.conversion = "int→float" if "float" in tipos else None
-        resultado = "float" if "float" in tipos or nodo.valor == "/" else "int"
-        nodo.tipo_dato = resultado
+        resultado = "float" if "float" in tipos else "int"
         valores = [h.valor_constante for h in nodo.hijos]
+        # La división de enteros solo resulta float si sus operandos constantes
+        # producen un cociente fraccionario. Las divisiones enteras exactas
+        # (p. ej. 8/2) conservan int; si el valor no se conoce, int/int conserva
+        # el tipo entero definido para este lenguaje.
+        if (nodo.valor == "/" and resultado == "int" and len(valores) == 2
+                and all(isinstance(v, int) and not isinstance(v, bool) for v in valores)
+                and valores[1] != 0 and valores[0] % valores[1] != 0):
+            resultado = "float"
+        nodo.tipo_dato = resultado
         if len(valores) == 2 and all(v is not None for v in valores):
             try:
                 op = nodo.valor
@@ -191,6 +199,8 @@ class AnalizadorSemantico:
                     "*":lambda a,b:a*b, "/":lambda a,b:a/b,
                     "%":lambda a,b:a%b, "^":lambda a,b:a**b}[op]
                 nodo.valor_constante = calculo(*valores)
+                if op == "/" and resultado == "int":
+                    nodo.valor_constante = int(nodo.valor_constante)
             except (ArithmeticError, OverflowError):
                 self._error(nodo, "La operación constante no está definida (por ejemplo, división entre cero)")
         return resultado

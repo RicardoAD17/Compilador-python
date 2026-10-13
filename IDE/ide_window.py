@@ -75,8 +75,8 @@ class IDE(QMainWindow):
         self.tabs_derechos.addTab(self.arbol_semantico, "Análisis Semántico")
         self.tabs_derechos.addTab(QTextEdit(),       "Código Intermedio")
         self.tabla_simbolos = QTableWidget()
-        self.tabla_simbolos.setColumnCount(5)
-        self.tabla_simbolos.setHorizontalHeaderLabels(["Identificador", "Tipo", "Líneas", "Desplazamiento", "Ámbito"])
+        self.tabla_simbolos.setColumnCount(4)
+        self.tabla_simbolos.setHorizontalHeaderLabels(["Identificador", "Tipo", "Líneas", "Desplazamiento"])
         self.tabla_simbolos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabs_derechos.addTab(self.tabla_simbolos, "Tabla de Símbolos")
 
@@ -449,7 +449,7 @@ class IDE(QMainWindow):
         for fila, simbolo in enumerate(simbolos):
             self.tabla_simbolos.insertRow(fila)
             valores = (simbolo["nombre"], simbolo["tipo"], ", ".join(str(x) for x in simbolo["lineas"]),
-                       str(simbolo["desplazamiento"]), str(simbolo["ambito"]))
+                       str(simbolo["desplazamiento"]))
             for columna, valor in enumerate(valores):
                 self.tabla_simbolos.setItem(fila, columna, QTableWidgetItem(valor))
         self._mostrar_errores_sem(errores)
