@@ -37,6 +37,12 @@ class AnalizadorSemantico:
                 return ambito[nombre]
         return None
 
+    def _registrar_uso(self, simbolo, nodo):
+        """Conserva, sin duplicados, cada línea donde se referencia el símbolo."""
+        linea = getattr(nodo, "linea", None)
+        if linea is not None and linea not in simbolo["lineas"]:
+            simbolo["lineas"].append(linea)
+
     def _declarar(self, ident, tipo):
         nombre = ident.valor
         actual = self._ambitos[-1].get(nombre)
@@ -81,6 +87,7 @@ class AnalizadorSemantico:
                 self._error(nodo, f"El identificador '{nodo.valor}' no está declarado")
                 nodo.error_semantico = True
                 return None
+            self._registrar_uso(simbolo, nodo)
             nodo.tipo_dato = simbolo["tipo"]
             nodo.desplazamiento = simbolo["desplazamiento"]
             return nodo.tipo_dato
