@@ -40,7 +40,7 @@ class AnalizadorSemantico:
     def _registrar_uso(self, simbolo, nodo):
         """Conserva, sin duplicados, cada línea donde se referencia el símbolo."""
         linea = getattr(nodo, "linea", None)
-        if linea is not None and linea not in simbolo["lineas"]:
+        if linea is not None:
             simbolo["lineas"].append(linea)
 
     def _declarar(self, ident, tipo):
@@ -56,6 +56,7 @@ class AnalizadorSemantico:
             "nombre": nombre, "tipo": tipo, "lineas": [ident.linea],
             "desplazamiento": self._desplazamiento,
             "ambito": len(self._ambitos) - 1,
+            "valor": None,
         }
         self._desplazamiento += self.TAMANOS.get(tipo, 0)
         self._ambitos[-1][nombre] = registro
@@ -90,6 +91,7 @@ class AnalizadorSemantico:
             self._registrar_uso(simbolo, nodo)
             nodo.tipo_dato = simbolo["tipo"]
             nodo.desplazamiento = simbolo["desplazamiento"]
+            nodo.valor_constante = simbolo.get("valor")
             return nodo.tipo_dato
         if tipo == "numero":
             nodo.tipo_dato = "float" if "." in str(nodo.valor) else "int"
@@ -111,13 +113,19 @@ class AnalizadorSemantico:
         if tipo == "asignacion":
             destino = self._visitar(nodo.hijos[0]) if nodo.hijos else None
             fuente = self._visitar(nodo.hijos[1]) if len(nodo.hijos) > 1 else None
-            self._asignacion(nodo, destino, fuente, nodo.hijos[0] if nodo.hijos else nodo)
+            expresion = nodo.hijos[1] if len(nodo.hijos) > 1 else None
+            valor = getattr(expresion, "valor_constante", None)
+            self._asignacion(nodo, destino, fuente, nodo.hijos[0] if nodo.hijos else nodo, valor)
             return None
         if tipo == "sent_cin":
             self._visitar_hijos(nodo)
             return None
         if tipo in ("sent_expresion", "expresion_suelta"):
-            return self._visitar_hijos(nodo)
+            resultado = self._visitar_hijos(nodo)
+            if nodo.hijos:
+                nodo.tipo_dato = getattr(nodo.hijos[-1], "tipo_dato", resultado)
+                nodo.valor_constante = getattr(nodo.hijos[-1], "valor_constante", None)
+            return resultado
         if tipo in ("then", "else", "cuerpo_while", "cuerpo_do"):
             self._bloque(nodo)
             return None
@@ -158,13 +166,22 @@ class AnalizadorSemantico:
             resultado = self._visitar(hijo)
         return resultado
 
-    def _asignacion(self, nodo, destino, fuente, ident):
+    def _asignacion(self, nodo, destino, fuente, ident, valor):
         if destino and fuente:
             if destino == "float" and fuente == "int":
                 ident.conversion = "int→float"
                 nodo.conversion = "int→float"
+                if valor is not None:
+                    valor = float(valor)
             elif destino != fuente:
                 self._error(nodo, f"No se puede asignar un valor de tipo {fuente} a una variable de tipo {destino}")
+                valor = None
+            simbolo = self._lookup(getattr(ident, "valor", None))
+            if simbolo is not None:
+                simbolo["valor"] = valor
+                ident.valor_constante = valor
+            nodo.tipo_dato = destino
+            nodo.valor_constante = valor
 
     def _condicion(self, nodo):
         t = self._visitar(nodo)
@@ -183,15 +200,6 @@ class AnalizadorSemantico:
             nodo.conversion = "int→float" if "float" in tipos else None
         resultado = "float" if "float" in tipos else "int"
         valores = [h.valor_constante for h in nodo.hijos]
-        # La división de enteros solo resulta float si sus operandos constantes
-        # producen un cociente fraccionario. Las divisiones enteras exactas
-        # (p. ej. 8/2) conservan int; si el valor no se conoce, int/int conserva
-        # el tipo entero definido para este lenguaje.
-        if (nodo.valor == "/" and resultado == "int" and len(valores) == 2
-                and all(isinstance(v, int) and not isinstance(v, bool) for v in valores)
-                and valores[1] != 0 and valores[0] % valores[1] != 0):
-            resultado = "float"
-        nodo.tipo_dato = resultado
         if len(valores) == 2 and all(v is not None for v in valores):
             try:
                 op = nodo.valor
