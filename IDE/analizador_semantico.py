@@ -48,6 +48,7 @@ class AnalizadorSemantico:
         return None
 
     def _registrar_uso(self, simbolo, nodo):
+        """Conserva, sin duplicados, cada línea donde se referencia el símbolo."""
         linea = getattr(nodo, "linea", None)
         if linea is not None:
             simbolo["lineas"].append(linea)
@@ -213,7 +214,19 @@ class AnalizadorSemantico:
             self._invalidar(self._modificadas(nodo))     # cin cambia la variable
             return None
         if tipo in ("sent_expresion", "expresion_suelta"):
-            return self._visitar_hijos(nodo)
+            r = self._visitar_hijos(nodo)
+            hijo = nodo.hijos[0] if len(nodo.hijos) == 1 else None
+            if (hijo is not None
+                    and hijo.tipo in ("inc_dec", "inc_dec_prefijo", "inc_dec_postfijo")
+                    and hijo.hijos and hijo.hijos[0].tipo == "id"
+                    and hijo.valor_constante is not None):
+                # Como sentencia sola (a++; / a--;), todo el subárbol muestra
+                # el valor ya modificado de la variable.
+                actual = self._lookup(hijo.hijos[0].valor)["valor"]
+                hijo.hijos[0].valor_constante = actual
+                hijo.valor_constante = actual
+                nodo.valor_constante = actual
+            return r
         if tipo in ("then", "else", "cuerpo_while", "cuerpo_do"):
             self._bloque(nodo)
             return None
@@ -332,6 +345,14 @@ class AnalizadorSemantico:
 
         resultado = "float" if "float" in tipos else "int"
         valores = [h.valor_constante for h in nodo.hijos]
+        # La división de enteros solo resulta float si sus operandos constantes
+        # producen un cociente fraccionario. Las divisiones enteras exactas
+        # (p. ej. 8/2) conservan int; si el valor no se conoce, int/int conserva
+        # el tipo entero definido para este lenguaje.
+        if (nodo.valor == "/" and resultado == "int" and len(valores) == 2
+                and all(isinstance(v, int) and not isinstance(v, bool) for v in valores)
+                and valores[1] != 0 and valores[0] % valores[1] != 0):
+            resultado = "int"
         nodo.tipo_dato = resultado
         if len(valores) == 2 and all(v is not None for v in valores):
             try:
